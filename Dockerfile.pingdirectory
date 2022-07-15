@@ -1,0 +1,2 @@
+FROM pingidentity/pingdirectory:2204
+COPY baseline/pingdirectory /opt/in

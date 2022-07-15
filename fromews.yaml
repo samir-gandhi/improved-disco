@@ -1,0 +1,627 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-admin
+  name: sgews-pingfederate-admin
+  namespace: dp-pingpoc
+spec:
+  ports:
+  - name: https
+    port: 9999
+    protocol: TCP
+    targetPort: 9999
+  selector:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-admin
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-admin
+  name: sgews-pingfederate-cluster
+  namespace: dp-pingpoc
+spec:
+  ports:
+  - name: clusterbind
+    port: 7600
+    protocol: TCP
+    targetPort: 7600
+  - name: clusterfail
+    port: 7700
+    protocol: TCP
+    targetPort: 7700
+  publishNotReadyAddresses: true
+  selector:
+    clusterIdentifier: sgews-pingfederate
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-engine
+  name: sgews-pingfederate-engine
+  namespace: dp-pingpoc
+spec:
+  ports:
+  - name: https
+    port: 9031
+    protocol: TCP
+    targetPort: 9031
+  selector:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-engine
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-admin
+  name: sgews-pingfederate-admin
+  namespace: dp-pingpoc
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: sgews
+      app.kubernetes.io/name: pingfederate-admin
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: docker/default
+      labels:
+        app.kubernetes.io/instance: sgews
+        app.kubernetes.io/name: pingfederate-admin
+        clusterIdentifier: sgews-pingfederate
+        product: pratikpatel
+        product-line: dp
+    spec:
+      affinity: {}
+      containers:
+      - command:
+        - sh
+        - /opt/out/instance/bin/run.sh
+        envFrom:
+        - configMapRef:
+            name: sgews-global-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-pingfederate-admin-env-vars
+        - secretRef:
+            name: devops-secret
+            optional: true
+        - secretRef:
+            name: sgews-pingfederate-admin-git-secret
+            optional: true
+        image: dev.registry.ews.int/ews/dp/ping/pingfederate:2204
+        imagePullPolicy: Always
+        lifecycle: {}
+        livenessProbe:
+          exec:
+            command:
+            - /opt/liveness.sh
+          failureThreshold: 4
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: pingfederate-admin
+        ports:
+        - containerPort: 7600
+          name: clusterbind
+          protocol: TCP
+        - containerPort: 7700
+          name: clusterfail
+          protocol: TCP
+        - containerPort: 9999
+          name: https
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - /opt/readiness.sh
+          failureThreshold: 4
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 200m
+            memory: 800Mi
+          requests:
+            cpu: 100m
+            memory: 400Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        startupProbe:
+          exec:
+            command:
+            - /opt/liveness.sh
+          failureThreshold: 90
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/out
+          name: runtime
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /opt/liveness.sh
+          name: liveness
+          readOnly: true
+          subPath: liveness.sh
+      initContainers:
+      - env:
+        - name: STARTUP_COMMAND
+          value: env
+        envFrom:
+        - configMapRef:
+            name: sgews-global-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-pingfederate-admin-env-vars
+        - secretRef:
+            name: devops-secret
+            optional: true
+        - secretRef:
+            name: sgews-pingfederate-admin-git-secret
+            optional: true
+        image: dev.registry.ews.int/ews/dp/ping/pingfederate:2204
+        imagePullPolicy: Always
+        name: runtime-init
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/out
+          name: runtime
+        - mountPath: /opt/in/instance/server/default/conf/pingfederate.lic
+          name: pingfederate-license
+          subPath: pingfederate.lic
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 0
+        runAsGroup: 0
+        runAsUser: 9031
+        supplementalGroups:
+        - 2000
+      shareProcessNamespace: false
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: runtime
+      - emptyDir: {}
+        name: tmp
+      - name: pingfederate-license
+        secret:
+          defaultMode: 420
+          secretName: pingfederate-license
+      - configMap:
+          defaultMode: 511
+          items:
+          - key: liveness.sh
+            path: liveness.sh
+          name: liveness
+        name: liveness
+---        
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-engine
+  name: sgews-pingfederate-engine
+  namespace: dp-pingpoc
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: sgews
+      app.kubernetes.io/name: pingfederate-engine
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        seccomp.security.alpha.kubernetes.io/pod: docker/default
+      labels:
+        app.kubernetes.io/instance: sgews
+        app.kubernetes.io/name: pingfederate-engine
+        clusterIdentifier: sgews-pingfederate
+        product: pratikpatel
+        product-line: dp
+    spec:
+      affinity: {}
+      containers:
+      - command:
+        - sh
+        - /opt/out/instance/bin/run.sh
+        envFrom:
+        - configMapRef:
+            name: sgews-global-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-pingfederate-engine-env-vars
+        - secretRef:
+            name: devops-secret
+            optional: true
+        - secretRef:
+            name: sgews-pingfederate-engine-git-secret
+            optional: true
+        image: dev.registry.ews.int/ews/dp/ping/pingfederate:2204
+        imagePullPolicy: Always
+        lifecycle: {}
+        livenessProbe:
+          exec:
+            command:
+            - /opt/liveness.sh
+          failureThreshold: 4
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          successThreshold: 1
+          timeoutSeconds: 5
+        name: pingfederate-engine
+        ports:
+        - containerPort: 7600
+          name: clusterbind
+          protocol: TCP
+        - containerPort: 7700
+          name: clusterfail
+          protocol: TCP
+        - containerPort: 9031
+          name: https
+          protocol: TCP
+        readinessProbe:
+          exec:
+            command:
+            - /opt/readiness.sh
+          failureThreshold: 4
+          initialDelaySeconds: 30
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: 200m
+            memory: 800Mi
+          requests:
+            cpu: 100m
+            memory: 400Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        startupProbe:
+          exec:
+            command:
+            - /opt/liveness.sh
+          failureThreshold: 90
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 5
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/out
+          name: runtime
+        - mountPath: /tmp
+          name: tmp
+        - mountPath: /opt/liveness.sh
+          name: liveness
+          readOnly: true
+          subPath: liveness.sh
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - command:
+        - sh
+        - -c
+        - echo "Waiting for sgews-pingfederate-admin:"9999"..." && wait-for sgews-pingfederate-admin:"9999"
+          -t 300 -- echo "sgews-pingfederate-admin:"9999" running"
+        image: dev.registry.ews.int/ews/dp/ping/pingtoolkit:2204
+        imagePullPolicy: Always
+        name: wait-for-pingfederate-admin
+        resources:
+          limits:
+            cpu: 200m
+            memory: 800Mi
+          requests:
+            cpu: 100m
+            memory: 400Mi
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          runAsNonRoot: true
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+      - env:
+        - name: STARTUP_COMMAND
+          value: env
+        envFrom:
+        - configMapRef:
+            name: sgews-global-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-env-vars
+            optional: true
+        - configMapRef:
+            name: sgews-pingfederate-engine-env-vars
+        - secretRef:
+            name: devops-secret
+            optional: true
+        - secretRef:
+            name: sgews-pingfederate-engine-git-secret
+            optional: true
+        image: dev.registry.ews.int/ews/dp/ping/pingfederate:2204
+        imagePullPolicy: Always
+        name: runtime-init
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/out
+          name: runtime
+        - mountPath: /opt/in/instance/server/default/conf/pingfederate.lic
+          name: pingfederate-license
+          subPath: pingfederate.lic
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 0
+        runAsGroup: 0
+        runAsUser: 9031
+        supplementalGroups:
+        - 0
+      shareProcessNamespace: false
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - emptyDir: {}
+        name: runtime
+      - emptyDir: {}
+        name: tmp
+      - name: pingfederate-license
+        secret:
+          defaultMode: 420
+          secretName: pingfederate-license
+      - configMap:
+          defaultMode: 511
+          items:
+          - key: liveness.sh
+            path: liveness.sh
+          name: liveness
+        name: liveness
+---
+apiVersion: v1
+data:
+  liveness.sh: |-
+    #!/usr/bin/env sh
+    URL="https://localhost:${PF_ENGINE_PORT}/pf/heartbeat.ping"
+    if test "${OPERATIONAL_MODE}" = "CLUSTERED_CONSOLE" -o "${OPERATIONAL_MODE}" = "STANDALONE"; then
+        #if ! test -f /tmp/ready; then
+        #    exit 1
+        #fi
+        test "${OPERATIONAL_MODE}" = "CLUSTERED_CONSOLE" && URL="https://localhost:${PF_ADMIN_PORT}/pingfederate/app"
+    fi
+    curl -sSk -o /dev/null "${URL}"
+    if test ${?} -ne 0; then
+        # the health check must return 0 for healthy, 1 otherwise
+        # but not any other code so we catch the curl return code and
+        # change any non-zero code to 1
+        # https://docs.docker.com/engine/reference/builder/#healthcheck
+        exit 1
+    fi
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: global
+  name: liveness
+  namespace: dp-pingpoc
+---  
+apiVersion: v1
+data:
+  PA_ADMIN_PRIVATE_HOSTNAME: sgews-pingaccess-admin
+  PA_ADMIN_PRIVATE_PORT_CLUSTERCONFIG: "9090"
+  PA_ADMIN_PRIVATE_PORT_HTTPS: "9000"
+  PA_ADMIN_PUBLIC_HOSTNAME: localhost
+  PA_ADMIN_PUBLIC_PORT_HTTPS: "9000"
+  PA_ENGINE_PRIVATE_HOSTNAME: sgews-pingaccess-engine
+  PA_ENGINE_PRIVATE_PORT_HTTPS: "3000"
+  PA_ENGINE_PUBLIC_HOSTNAME: localhost
+  PA_ENGINE_PUBLIC_PORT_HTTPS: "3000"
+  PAZ_ENGINE_PRIVATE_HOSTNAME: sgews-pingauthorize
+  PAZ_ENGINE_PRIVATE_PORT_HTTPS: "443"
+  PAZ_ENGINE_PUBLIC_HOSTNAME: localhost
+  PAZ_ENGINE_PUBLIC_PORT_HTTPS: "1443"
+  PAZP_ENGINE_PRIVATE_HOSTNAME: sgews-pingauthorizepap
+  PAZP_ENGINE_PRIVATE_PORT_HTTPS: "8443"
+  PAZP_ENGINE_PUBLIC_HOSTNAME: localhost
+  PAZP_ENGINE_PUBLIC_PORT_HTTPS: "8443"
+  PD_CONSOLE_PRIVATE_HOSTNAME: sgews-pingdataconsole
+  PD_CONSOLE_PRIVATE_PORT_HTTPS: "8443"
+  PD_CONSOLE_PUBLIC_HOSTNAME: localhost
+  PD_CONSOLE_PUBLIC_PORT_HTTPS: "8443"
+  PD_DELEGATOR_PRIVATE_HOSTNAME: sgews-pingdelegator
+  PD_DELEGATOR_PRIVATE_PORT_HTTPS: "6443"
+  PD_DELEGATOR_PUBLIC_HOSTNAME: localhost
+  PD_DELEGATOR_PUBLIC_PORT_HTTPS: "6443"
+  PD_ENGINE_PRIVATE_HOSTNAME: sgews-pingdirectory
+  PD_ENGINE_PRIVATE_PORT_HTTPS: "443"
+  PD_ENGINE_PRIVATE_PORT_LDAP: "389"
+  PD_ENGINE_PRIVATE_PORT_LDAPS: "636"
+  PD_ENGINE_PUBLIC_HOSTNAME: localhost
+  PD_ENGINE_PUBLIC_PORT_HTTPS: "1443"
+  PDG_ENGINE_PRIVATE_HOSTNAME: sgews-pingdatagovernance
+  PDG_ENGINE_PRIVATE_PORT_HTTPS: "443"
+  PDG_ENGINE_PUBLIC_HOSTNAME: localhost
+  PDG_ENGINE_PUBLIC_PORT_HTTPS: "1443"
+  PDGP_ENGINE_PRIVATE_HOSTNAME: sgews-pingdatagovernancepap
+  PDGP_ENGINE_PRIVATE_PORT_HTTPS: "8443"
+  PDGP_ENGINE_PUBLIC_HOSTNAME: localhost
+  PDGP_ENGINE_PUBLIC_PORT_HTTPS: "8443"
+  PDP_ENGINE_PRIVATE_HOSTNAME: sgews-pingdirectoryproxy
+  PDP_ENGINE_PRIVATE_PORT_HTTPS: "443"
+  PDS_ENGINE_PRIVATE_HOSTNAME: sgews-pingdatasync
+  PDS_ENGINE_PRIVATE_PORT_HTTPS: "443"
+  PF_ADMIN_PRIVATE_HOSTNAME: sgews-pingfederate-admin
+  PF_ADMIN_PRIVATE_PORT_HTTPS: "9999"
+  PF_ADMIN_PUBLIC_HOSTNAME: localhost
+  PF_ADMIN_PUBLIC_PORT_HTTPS: "9999"
+  PF_ENGINE_PRIVATE_HOSTNAME: sgews-pingfederate-engine
+  PF_ENGINE_PRIVATE_PORT_HTTPS: "9031"
+  PF_ENGINE_PUBLIC_HOSTNAME: localhost
+  PF_ENGINE_PUBLIC_PORT_HTTPS: "9031"
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: global
+  name: sgews-global-env-vars
+  namespace: dp-pingpoc
+---  
+apiVersion: v1
+data:
+  CLUSTER_BIND_ADDRESS: NON_LOOPBACK
+  CLUSTER_NAME: sgews
+  DNS_QUERY_LOCATION: sgews-pingfederate-cluster.dp-pingpoc.svc.cluster.local
+  DNS_RECORD_TYPE: A
+  MOTD_URL: ""
+  MUTE_LICENSE_VERIFICATION: "yes"
+  OPERATIONAL_MODE: CLUSTERED_CONSOLE
+  PF_ADMIN_PUBLIC_BASEURL: https://sgews-pingfederate-admin-a.pks.aws.us-west-2.dev.ews.int
+  PING_IDENTITY_ACCEPT_EULA: "YES"
+  TAIL_LOG_FILES: /opt/out/instance/log/server.log
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-admin
+  name: sgews-pingfederate-admin-env-vars
+  namespace: dp-pingpoc
+---  
+apiVersion: v1
+data:
+  CLUSTER_BIND_ADDRESS: NON_LOOPBACK
+  CLUSTER_NAME: sgews
+  DNS_QUERY_LOCATION: sgews-pingfederate-cluster.dp-pingpoc.svc.cluster.local
+  DNS_RECORD_TYPE: A
+  MOTD_URL: ""
+  MUTE_LICENSE_VERIFICATION: "yes"
+  OPERATIONAL_MODE: CLUSTERED_ENGINE
+  PF_ADMIN_PUBLIC_BASEURL: https://sgews-pingfederate-admin-a.pks.aws.us-west-2.dev.ews.int
+  PING_IDENTITY_ACCEPT_EULA: "YES"
+  TAIL_LOG_FILES: /opt/out/instance/log/server.log
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-engine
+  name: sgews-pingfederate-engine-env-vars
+  namespace: dp-pingpoc
+---  
+apiVersion: v1
+data:
+  pingfederate.lic: SUQ9MDAzNzEzNjQKV1NUcnVzdFNUUz10cnVlCk9BdXRoPXRydWUKU2Fhc1Byb3Zpc2lvbmluZz10cnVlClByb2R1Y3Q9UGluZ0ZlZGVyYXRlClZlcnNpb249MTEuMApFbmZvcmNlbWVudFR5cGU9MwpUaWVyPUZyZWUKSXNzdWVEYXRlPTIwMjItMDUtMDIKRXhwaXJhdGlvbkRhdGU9MjAyMi0wNi0zMApEZXBsb3ltZW50TWV0aG9kPVRyYWRpdGlvbmFsClNpZ25Db2RlPUZGMDcKU2lnbmF0dXJlPTMwMkMwMjE0NkM2RDEzMTQwMEVDNTQyRTI0QUNERUJCMEZCQUM3QzY0MkZEODRCNjAyMTQzNjI2OENCQjYzODY4OEMxMkFDQjU1RTY2MjUyMUQxMjg0Mzc4NjNE
+kind: Secret
+metadata:
+  name: pingfederate-license
+  namespace: dp-pingpoc
+type: Opaque
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/server-alias: '[sgews-pingfederate-admin.dev.ews.int
+      sgews-pingfederate-admin-svc-a.pks.aws.us-west-2.dev.ews.int]'
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-admin
+  name: sgews-pingfederate-admin
+  namespace: dp-pingpoc
+spec:
+  rules:
+  - host: sgews-pingfederate-admin-svc-a.pks.aws.us-west-2.dev.ews.int
+    http:
+      paths:
+      - backend:
+          service:
+            name: sgews-pingfederate-admin
+            port:
+              number: 9999
+        path: /
+        pathType: ImplementationSpecific
+  tls:
+  - secretName: sgews-pingfederate-admin-a.pks.aws.us-west-2.dev.ews.int
+---  
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  annotations:
+    kubernetes.io/ingress.allow-http: "false"
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    nginx.ingress.kubernetes.io/server-alias: '[sgews-pingfederate-engine.dev.ews.int
+      sgews-pingfederate-engine-a.pks.aws.us-west-2.dev.ews.int]'
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: pingfederate-engine
+  name: sgews-pingfederate-engine
+  namespace: dp-pingpoc
+spec:
+  rules:
+  - host: sgews-pingfederate-engine-svc-a.pks.aws.us-west-2.dev.ews.int
+    http:
+      paths:
+      - backend:
+          service:
+            name: sgews-pingfederate-engine
+            port:
+              number: 9031
+        path: /
+        pathType: ImplementationSpecific
+  tls:
+  - secretName: sgews-pingfederate-engine-a.pks.aws.us-west-2.dev.ews.int
+
+---

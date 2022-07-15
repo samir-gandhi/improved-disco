@@ -1,0 +1,2 @@
+FROM pingidentity/pingfederate:2204
+COPY baseline/pingfederate /opt/in
