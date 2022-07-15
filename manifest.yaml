@@ -189,7 +189,7 @@ spec:
         - secretRef:
             name: sgews-pingdirectory-git-secret
             optional: true
-        image: pingidentity/pingdirectory:2204
+        image: dev.registry.ews.int/ews/dp/ping/pingdirectory:2204
         imagePullPolicy: IfNotPresent
         lifecycle: {}
         livenessProbe:
@@ -272,7 +272,7 @@ spec:
         - secretRef:
             name: sgews-pingdirectory-git-secret
             optional: true
-        image: pingidentity/pingdirectory:2204
+        image: dev.registry.ews.int/ews/dp/ping/pingdirectory:2204
         name: runtime-init
         securityContext:
           readOnlyRootFilesystem: true
