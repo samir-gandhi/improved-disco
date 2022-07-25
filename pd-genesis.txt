@@ -1,0 +1,94 @@
+apiVersion: v1
+data:
+  03-build-run-plan.sh: |-
+    #!/usr/bin/env sh
+    # shellcheck source=../../../../pingcommon/opt/staging/hooks/pingcommon.lib.sh
+    . "${HOOKS_DIR}/pingcommon.lib.sh"
+
+    # shellcheck source=../../../../pingdatacommon/opt/staging/hooks/pingdata.lib.sh
+    . "${HOOKS_DIR}/pingdata.lib.sh"
+
+    # shellcheck source=./pingdirectory.lib.sh
+    . "${HOOKS_DIR}/pingdirectory.lib.sh"
+    echo "overwritten build-run-plan"
+    PD_STATE="GENESIS"
+    RUN_PLAN="START"
+    echo "PD_STATE=${PD_STATE}"
+    echo "RUN_PLAN=${RUN_PLAN}"
+    INSTANCE_NAME=$(cat /proc/sys/kernel/hostname)
+    POD_LDAPS_PORT=1636
+    _podInstanceName=${INSTANCE_NAME}
+    echo_header "Run Plan Information"
+    echo_vars PD_STATE RUN_PLAN INSTANCE_NAME serverUUID _podInstanceName POD_LDAPS_PORT
+    echo_bar
+    export_container_env PD_STATE RUN_PLAN INSTANCE_NAME _podInstanceName POD_LDAPS_PORT
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: global
+  name: init-build-run-plan
+---
+        image: samirgandhi/pingdirectory:2204-baseline
+        name: runtime-init
+        securityContext:
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - mountPath: /opt/handoff
+          name: staging
+          readOnly: false
+        - mountPath: /opt/staging/pd.profile/server-root/pre-setup/PingDirectory.lic
+          name: pingdirectory-license
+          subPath: PingDirectory.lic
+        - mountPath: /tmp
+          name: tmp
+          readOnly: false
+        - mountPath: /opt/out
+          name: init-runtime
+          readOnly: false
+        - mountPath: /opt/bootstrap.sh
+          name: bootstrap
+          readOnly: true
+          subPath: bootstrap.sh
+        - mountPath: /opt/staging/hooks/10-start-sequence.sh
+          name: init-start
+          readOnly: true
+          subPath: 10-start-sequence.sh
+        - mountPath: /opt/staging/hooks/03-build-run-plan.sh
+          name: init-build-run-plan
+          readOnly: true
+          subPath: 03-build-run-plan.sh
+
+      volumes:
+      - emptyDir: {}
+        name: staging
+      - emptyDir: {}
+        name: tmp
+      - name: pingdirectory-license
+        secret:
+          secretName: pingdirectory-license
+      - configMap:
+          defaultMode: 511
+          items:
+          - key: bootstrap.sh
+            path: bootstrap.sh
+          name: bootstrap
+        name: bootstrap
+      - configMap:
+          defaultMode: 511
+          items:
+          - key: 10-start-sequence.sh
+            path: 10-start-sequence.sh
+          name: init-start
+        name: init-start
+      - emptyDir: {}
+        name: runtime
+      - emptyDir: {}
+        name: init-runtime
+      - configMap:
+          defaultMode: 511
+          items:
+          - key: 03-build-run-plan.sh
+            path: 03-build-run-plan.sh
+          name: init-build-run-plan
+        name: init-build-run-plan

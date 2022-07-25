@@ -43,6 +43,39 @@ apiVersion: v1
 ---
 apiVersion: v1
 data:
+  03-build-run-plan.sh: |-
+    #!/usr/bin/env sh
+    # shellcheck source=../../../../pingcommon/opt/staging/hooks/pingcommon.lib.sh
+    . "${HOOKS_DIR}/pingcommon.lib.sh"
+
+    # shellcheck source=../../../../pingdatacommon/opt/staging/hooks/pingdata.lib.sh
+    . "${HOOKS_DIR}/pingdata.lib.sh"
+
+    # shellcheck source=./pingdirectory.lib.sh
+    . "${HOOKS_DIR}/pingdirectory.lib.sh"
+    echo "overwritten build-run-plan"
+    PD_STATE="GENESIS"
+    RUN_PLAN="START"
+    echo "PD_STATE=${PD_STATE}"
+    echo "RUN_PLAN=${RUN_PLAN}"
+    INSTANCE_NAME=$(cat /proc/sys/kernel/hostname)
+    POD_LDAPS_PORT=1636
+    _podInstanceName=${INSTANCE_NAME}
+    echo_header "Run Plan Information"
+    echo_vars PD_STATE RUN_PLAN INSTANCE_NAME serverUUID _podInstanceName POD_LDAPS_PORT
+    echo_bar
+
+    export_container_env PD_STATE RUN_PLAN INSTANCE_NAME _podInstanceName POD_LDAPS_PORT
+    
+kind: ConfigMap
+metadata:
+  labels:
+    app.kubernetes.io/instance: sgews
+    app.kubernetes.io/name: global
+  name: init-build-run-plan
+---
+apiVersion: v1
+data:
   10-start-sequence.sh: |-
     #!/usr/bin/env sh
     echo "overwriting 10 hook"
@@ -69,9 +102,7 @@ kind: ConfigMap
 metadata:
   labels:
     app.kubernetes.io/instance: sgews
-    
     app.kubernetes.io/name: global
-    
   name: init-start
 ---
 apiVersion: v1
@@ -81,10 +112,10 @@ data:
   K8S_STATEFUL_SET_SERVICE_NAME: sgews-pingdirectory-cluster
   LDAP_PORT: "1389"
   LDAPS_PORT: "1636"
-  MAKELDIF_USERS: "20000"
+  MAKELDIF_USERS: "200"
   MUTE_LICENSE_VERIFICATION: "yes"
   ORCHESTRATION_TYPE: NONE
-  VERBOSE: "true"
+  MAX_HEAP_SIZE: "1g"
 kind: ConfigMap
 metadata:
   labels:
@@ -298,6 +329,10 @@ spec:
           name: init-start
           readOnly: true
           subPath: 10-start-sequence.sh
+        - mountPath: /opt/staging/hooks/03-build-run-plan.sh
+          name: init-build-run-plan
+          readOnly: true
+          subPath: 03-build-run-plan.sh
       nodeSelector: {}
       schedulerName: default-scheduler
       securityContext:
@@ -333,6 +368,13 @@ spec:
         name: runtime
       - emptyDir: {}
         name: init-runtime
+      - configMap:
+          defaultMode: 511
+          items:
+          - key: 03-build-run-plan.sh
+            path: 03-build-run-plan.sh
+          name: init-build-run-plan
+        name: init-build-run-plan
 ---
 apiVersion: v1
 kind: Service
